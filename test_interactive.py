@@ -114,7 +114,7 @@ def main():
             action = "click"
 
         article = id_map[rank]
-        session_ctx["reranker_score"] = 0.0
+        session_ctx["reranker_score"] = article.get("reranker_score", 0.0)
 
         env.record_interaction(
             user_id   = user_id,

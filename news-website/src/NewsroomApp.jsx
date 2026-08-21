@@ -16,7 +16,7 @@ import { startSession, fetchRecommendations } from "./api.js";
 
 export default function NewsroomApp() {
   const BRAND = "The Margin";
-  const [onboarded, setOnboarded] = useState(false);
+  const [onboarded, setOnboarded] = useState(() => localStorage.getItem("margin_onb") === "1");
   const [activeCat, setActiveCat] = useState("Home");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [bookmarksOpen, setBookmarksOpen] = useState(false);

@@ -43,7 +43,7 @@ def seed(bandit: LinUCBBandit):
     scores = {CATEGORIES[i]: round(float(theta[cat_start + i]), 3)
               for i in range(len(CATEGORIES))}
     top = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:8]
-    print("Top categories by θ:", "  ".join(f"{c}={v:+.3f}" for c, v in top))
+    print("Top categories by theta:", "  ".join(f"{c}={v:+.3f}" for c, v in top))
 
 
 if __name__ == "__main__":
@@ -54,4 +54,4 @@ if __name__ == "__main__":
     bandit = LinUCBBandit()
     seed(bandit)
     bandit.save(args.out)
-    print(f"Saved → {args.out}.npz")
+    print(f"Saved -> {args.out}.npz")

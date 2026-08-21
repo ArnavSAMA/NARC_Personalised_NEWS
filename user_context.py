@@ -68,7 +68,11 @@ class UserContextStore:
         updated = 0
         for user_id, records in self._buffer.items():
             profile = ups.load(user_id)
-            old_vec = profile["user_vec"].astype(np.float64)
+            # Build on top of the fast loop's in-memory vector (if any interaction
+            # already shifted it this call) instead of the stale on-disk value —
+            # otherwise fast_update_user_vec's shift is discarded the instant
+            # flush_updates() runs right after it (see rl_env.record_interaction).
+            old_vec = self._user_vecs.get(user_id, profile["user_vec"]).astype(np.float64)
 
             weighted_sum = np.zeros(EMBED_DIM, dtype=np.float64)
             total_weight = 0.0

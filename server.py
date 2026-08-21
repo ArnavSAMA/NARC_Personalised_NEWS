@@ -123,6 +123,10 @@ async def recommendations(
     )
     latency = round(time.time() - t0, 3)
 
+    # cache the score each article was shown with, so /interaction can reward
+    # the bandit using the same context vector it was recommended with
+    session["last_scores"] = {a["story_id"]: a.get("reranker_score", 0.0) for a in recs}
+
     return {
         "articles": recs,
         "latency_sec": latency,
@@ -138,13 +142,18 @@ async def interaction(req: InteractionRequest):
     if not session:
         raise HTTPException(404, "Unknown session_id")
 
+    interaction_ctx = {
+        **session,
+        "reranker_score": session.get("last_scores", {}).get(req.story_id, 0.0),
+    }
+
     try:
         env.record_interaction(
             user_id=req.user_id,
             story_id=req.story_id,
             action=req.action,
             position=req.position,
-            session_ctx=session,
+            session_ctx=interaction_ctx,
         )
     except ValueError as e:
         raise HTTPException(400, str(e))

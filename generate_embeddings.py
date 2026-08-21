@@ -58,4 +58,4 @@ if embeddings.shape[1] < 768:
 
 with open(OUT_PATH, "wb") as f:
     pickle.dump(embeddings, f)
-print(f"Saved → {OUT_PATH}")
+print(f"Saved -> {OUT_PATH}")

@@ -140,16 +140,23 @@ def _candidate_pool(articles: list[Article], user_vec: np.ndarray,
         probs = [adjusted[c] for c in cats]
         chosen_cats = random.choices(cats, weights=probs, k=TOP_N_CANDIDATES * 3)
 
+        # index once instead of rescanning all articles on every draw below
+        by_cat: dict[str, list[tuple]] = {}
+        for i, a in enumerate(articles):
+            by_cat.setdefault(a.category, []).append((a, i))
+
         seen, pairs = set(), []
         for cat in chosen_cats:
             if len(pairs) >= TOP_N_CANDIDATES:
                 break
-            candidates = [(a, i) for i, a in enumerate(articles)
-                          if a.category == cat and i not in seen]
-            if candidates:
-                a, idx = random.choice(candidates)
-                seen.add(idx)
-                pairs.append((a, idx))
+            bucket = by_cat.get(cat)
+            if not bucket:
+                continue
+            a, idx = random.choice(bucket)
+            if idx in seen:
+                continue
+            seen.add(idx)
+            pairs.append((a, idx))
 
     # re-score by freshness after cosine
     pairs.sort(key=lambda t: t[0].freshness, reverse=True)
@@ -205,7 +212,10 @@ class RLEnvironment:
             elif "local" in loc_str:
                 loc_keys = ["local", "city", "mayor", "town", "county", "council", "police", "community", "delhi"]
 
-            if loc_keys:
+            # Only pull in off-pool location matches when there's no hard category
+            # filter — otherwise this silently undoes the filter above by injecting
+            # articles from other categories just because they mention a place name.
+            if loc_keys and not (category and category != "Home"):
                 loc_cands = []
                 for i, a in enumerate(articles):
                     text = f" {a.title} {a.summary} {a.category} ".lower()
@@ -245,8 +255,9 @@ class RLEnvironment:
         ctx_vecs   = [context_encoder.build(mood, archetype, location, timestamp,
                                              a.category, a.freshness, s)
                       for (a, _), s in ranked]
-        candidates = [a for (a, _), _ in ranked]
-        
+        candidates  = [a for (a, _), _ in ranked]
+        score_by_id = {a.id: s for (a, _), s in ranked}
+
         # Increase backend return count to 30 so frontend grid (15 slots) never runs sparse
         top_k      = self.bandit.select_topk(ctx_vecs, candidates, 30)
 
@@ -262,6 +273,10 @@ class RLEnvironment:
                     others.append(a)
             top_k = loc_matches + others
 
+        def _match_score(raw: float) -> float:
+            # raw cross-encoder logit -> 0-1 for display (same sigmoid context_encoder uses)
+            return 1.0 / (1.0 + math.exp(-raw))
+
         return [
             {
                 "rank":           i + 1,
@@ -269,6 +284,8 @@ class RLEnvironment:
                 "title":          a.title,
                 "category":       a.category,
                 "freshness":      round(a.freshness, 4),
+                "reranker_score": round(float(score_by_id.get(a.id, 0.0)), 4),
+                "match_score":    round(_match_score(float(score_by_id.get(a.id, 0.0))), 4),
                 **self.pipeline.get_raw(a.id),
             }
             for i, a in enumerate(top_k)
@@ -372,7 +389,6 @@ class RLEnvironment:
                 profile = ups.load(user_id)
                 ctx_vecs, candidates = _build_candidates(result.interactions)
 
-            top_k    = self.bandit.select_topk(ctx_vecs, candidates, TOP_K_RECS)
             # FILTER: Remove articles already seen in this session to prevent 'repeaking'
             fresh_indices = [i for i, a in enumerate(candidates) if a.id not in seen_ids]
             f_ctx = [ctx_vecs[i] for i in fresh_indices]
@@ -528,13 +544,13 @@ if __name__ == "__main__":
                 cat_scores = {CATEGORIES[i]: float(theta[cat_start + i])
                               for i in range(len(CATEGORIES))}
                 top_cats = sorted(cat_scores.items(), key=lambda x: x[1], reverse=True)[:5]
-                print(f"  [Bandit θ] top categories: "
+                print(f"  [Bandit theta] top categories: "
                       + "  ".join(f"{c}={v:+.3f}" for c, v in top_cats), flush=True)
 
             if session_num % args.checkpoint_every == 0:
                 ckpt = f"{args.checkpoint_dir}/bandit_session_{session_num}"
                 bandit.save(ckpt)
-                print(f"  [Checkpoint] saved → {ckpt}.npz", flush=True)
+                print(f"  [Checkpoint] saved -> {ckpt}.npz", flush=True)
 
         overall_avg = sum(session_rewards) / len(session_rewards) if session_rewards else 0.0
         print(f"\nOverall average reward: {overall_avg:+.3f}")
@@ -543,4 +559,4 @@ if __name__ == "__main__":
         print("Training complete.")
         final_ckpt = f"{args.checkpoint_dir}/bandit_session_{args.sessions}_final"
         bandit.save(final_ckpt)
-        print(f"[Checkpoint] final saved → {final_ckpt}.npz")
+        print(f"[Checkpoint] final saved -> {final_ckpt}.npz")

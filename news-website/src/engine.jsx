@@ -82,6 +82,6 @@ export function mapBackendToFrontend(a) {
     author: a.publisher || "Staff",
     source: a.publisher || "News",
     minutes: Math.max(2, Math.round(((a.summary || "").length || 200) / 100)),
-    score: a.reranker_score || 0.8 // fallback for UI
+    score: a.match_score ?? 0.8 // normalized 0-1 confidence; fallback for UI
   };
 }
